@@ -91,6 +91,11 @@ static struct {
 #define cpuhp_lock_acquire()      lock_map_acquire(&cpu_hotplug.dep_map)
 #define cpuhp_lock_release()      lock_map_release(&cpu_hotplug.dep_map)
 
+void cpu_hotplug_mutex_held(void)
+{
+	lockdep_assert_held(&cpu_hotplug.lock);
+}
+EXPORT_SYMBOL(cpu_hotplug_mutex_held);
 
 void get_online_cpus(void)
 {
@@ -361,6 +366,9 @@ static int _cpu_down(unsigned int cpu, int tasks_frozen)
 	if (!cpu_online(cpu))
 		return -EINVAL;
 
+	if (!tasks_frozen && !cpu_isolated(cpu) && num_online_uniso_cpus() == 1)
+		return -EBUSY;
+
 	cpu_hotplug_begin();
 
 	err = __cpu_notify(CPU_DOWN_PREPARE | mod, hcpu, -1, &nr_calls);
@@ -520,8 +528,8 @@ static int _cpu_up(unsigned int cpu, int tasks_frozen)
 	ret = __cpu_notify(CPU_UP_PREPARE | mod, hcpu, -1, &nr_calls);
 	if (ret) {
 		nr_calls--;
-		pr_warn("%s: attempt to bring up CPU %u failed\n",
-			__func__, cpu);
+		pr_warn_ratelimited("%s: attempt to bring up CPU %u failed\n",
+				    __func__, cpu);
 		goto out_notify;
 	}
 
@@ -545,9 +553,41 @@ out:
 	return ret;
 }
 
+static int switch_to_rt_policy(void)
+{
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO - 1 };
+	unsigned int policy = current->policy;
+	int err;
+
+	/* Nobody should be attempting hotplug from these policy contexts. */
+	if (policy == SCHED_BATCH || policy == SCHED_IDLE ||
+					policy == SCHED_DEADLINE)
+		return -EPERM;
+
+	if (policy == SCHED_FIFO || policy == SCHED_RR)
+		return 1;
+
+	/* Only SCHED_NORMAL left. */
+	err = sched_setscheduler_nocheck(current, SCHED_FIFO, &param);
+	return err;
+
+}
+
+static int switch_to_fair_policy(void)
+{
+	struct sched_param param = { .sched_priority = 0 };
+
+	return sched_setscheduler_nocheck(current, SCHED_NORMAL, &param);
+}
+
 int cpu_up(unsigned int cpu)
 {
 	int err = 0;
+	int switch_err = 0;
+
+	switch_err = switch_to_rt_policy();
+	if (switch_err < 0)
+		return switch_err;
 
 	if (!cpu_possible(cpu)) {
 		pr_err("can't online cpu %d because it is not configured as may-hotadd at boot time\n",
@@ -573,6 +613,14 @@ int cpu_up(unsigned int cpu)
 
 out:
 	cpu_maps_update_done();
+
+	if (!switch_err) {
+		switch_err = switch_to_fair_policy();
+		if (switch_err)
+			pr_err("Hotplug policy switch err=%d Task %s pid=%d\n",
+				switch_err, current->comm, current->pid);
+	}
+
 	return err;
 }
 EXPORT_SYMBOL_GPL(cpu_up);
@@ -797,6 +845,10 @@ static DECLARE_BITMAP(cpu_active_bits, CONFIG_NR_CPUS) __read_mostly;
 const struct cpumask *const cpu_active_mask = to_cpumask(cpu_active_bits);
 EXPORT_SYMBOL(cpu_active_mask);
 
+static DECLARE_BITMAP(cpu_isolated_bits, CONFIG_NR_CPUS) __read_mostly;
+const struct cpumask *const cpu_isolated_mask = to_cpumask(cpu_isolated_bits);
+EXPORT_SYMBOL(cpu_isolated_mask);
+
 void set_cpu_possible(unsigned int cpu, bool possible)
 {
 	if (possible)
@@ -831,6 +883,14 @@ void set_cpu_active(unsigned int cpu, bool active)
 		cpumask_clear_cpu(cpu, to_cpumask(cpu_active_bits));
 }
 
+void set_cpu_isolated(unsigned int cpu, bool isolated)
+{
+	if (isolated)
+		cpumask_set_cpu(cpu, to_cpumask(cpu_isolated_bits));
+	else
+		cpumask_clear_cpu(cpu, to_cpumask(cpu_isolated_bits));
+}
+
 void init_cpu_present(const struct cpumask *src)
 {
 	cpumask_copy(to_cpumask(cpu_present_bits), src);
@@ -844,6 +904,11 @@ void init_cpu_possible(const struct cpumask *src)
 void init_cpu_online(const struct cpumask *src)
 {
 	cpumask_copy(to_cpumask(cpu_online_bits), src);
+}
+
+void init_cpu_isolated(const struct cpumask *src)
+{
+	cpumask_copy(to_cpumask(cpu_isolated_bits), src);
 }
 
 static ATOMIC_NOTIFIER_HEAD(idle_notifier);
