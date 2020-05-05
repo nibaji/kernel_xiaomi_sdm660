@@ -6484,17 +6484,14 @@ int cpr3_regulator_unregister(struct cpr3_controller *ctrl)
 	cpr3_regulator_debugfs_ctrl_remove(ctrl);
 	mutex_unlock(&cpr3_controller_list_mutex);
 
-	if (ctrl->irq && !cpumask_empty(&ctrl->irq_affinity_mask)) {
+	if (ctrl->irq && !cpumask_empty(&ctrl->irq_affinity_mask))
 		unregister_hotcpu_notifier(&ctrl->cpu_hotplug_notifier);
-	}
 
-	if (ctrl->ctrl_type == CPR_CTRL_TYPE_CPR4) {
+	if (ctrl->ctrl_type == CPR_CTRL_TYPE_CPR4)
 		rc = cpr3_ctrl_clear_cpr4_config(ctrl);
-		if (rc) {
+		if (rc)
 			cpr3_err(ctrl, "failed to clear CPR4 configuration,rc=%d\n",
 				rc);
-		}
-	}
 
 	cpr3_ctrl_loop_disable(ctrl);
 
@@ -6503,9 +6500,8 @@ int cpr3_regulator_unregister(struct cpr3_controller *ctrl)
 	if (ctrl->vdd_limit_regulator) {
 		regulator_disable(ctrl->vdd_limit_regulator);
 
-		if (ctrl->ctrl_type == CPR_CTRL_TYPE_CPR3) {
+		if (ctrl->ctrl_type == CPR_CTRL_TYPE_CPR3)
 			msm_spm_avs_disable_irq(0, MSM_SPM_AVS_IRQ_MAX);
-		}
 	}
 
 	for (i = 0; i < ctrl->thread_count; i++)

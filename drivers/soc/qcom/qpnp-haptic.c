@@ -2998,14 +2998,13 @@ static int qpnp_haptic_probe(struct platform_device *pdev)
 	int rc, i;
 
 	hap = devm_kzalloc(&pdev->dev, sizeof(*hap), GFP_KERNEL);
-	if (!hap) {
+	if (!hap)
 		return -ENOMEM;
 		hap->regmap = dev_get_regmap(pdev->dev.parent, NULL);
 		if (!hap->regmap) {
 			pr_err("Couldn't get parent's regmap\n");
 			return -EINVAL;
 		}
-	}
 
 	hap->pdev = pdev;
 
