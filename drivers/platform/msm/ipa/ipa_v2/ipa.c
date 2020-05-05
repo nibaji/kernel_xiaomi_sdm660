@@ -2343,7 +2343,7 @@ int ioremap_non_ap_bam_regs(void)
 		return -ENODEV;
 	}
 
-	for (client_idx = 0; client_idx < IPA_CLIENT_MAX; client_idx++)
+	for (client_idx = 0; client_idx < IPA_CLIENT_MAX; client_idx++) {
 		if (IPA_CLIENT_IS_Q6_NON_ZIP_CONS(client_idx) ||
 			IPA_CLIENT_IS_Q6_ZIP_CONS(client_idx) ||
 			IPA_CLIENT_IS_Q6_NON_ZIP_PROD(client_idx) ||
@@ -2351,8 +2351,9 @@ int ioremap_non_ap_bam_regs(void)
 
 			ep_idx = ipa2_get_ep_mapping(client_idx);
 
-			if (ep_idx == -1)
+			if (ep_idx == -1) {
 				continue;
+			}
 
 			ipa_ctx->ipa_non_ap_bam_s_desc_iova[ep_idx] =
 				ioremap_sw_desc_ofst_bam_register(ep_idx);
@@ -2365,6 +2366,7 @@ int ioremap_non_ap_bam_regs(void)
 				return -ENOMEM;
 			}
 		}
+	}
 		return 0;
 }
 
